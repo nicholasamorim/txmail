@@ -13,7 +13,25 @@ from twisted.internet.ssl import ClientContextFactory
 class Sender(object):
     def __init__(self, server, user=None, passwd=None,
                  port=25, starttls=False, ssl=False, **kwargs):
-        """
+        """A class that sends emails via SMTP and returns a deferred.
+
+        :param server: SMTP server.
+        :param user: SMTP user.
+        :param passwd: SMTP passwd.
+        :param port: SMTP port.
+        :param starttls: If True, we will upgrade a plain connection to
+        an encrypted connection.
+        :param ssl: If True, we'll use SSL to connect.
+        :param from_name: An optional sender name. It can also be passed
+        to the send method directly. If set here, will be used for all
+        emails sent via the `send` method.
+        :param from_email: An optional sender email. It can also be passed
+        to the send method directly. If set here, will be used for all
+        emails sent via the `send` method.
+        :param retries: An `int` specifying how many times we should retry
+        in case of failue. Default is 5.
+        :param timeout: An `int`specifying the timeout. If None, we wait
+        forever. Default is None.
         """
         self._server = server
         self._user = user
@@ -99,7 +117,9 @@ class Sender(object):
 
         return d
 
-    def get_factory(self, to, message, deferred):
+    def _get_factory(self, to, message, deferred):
+        """
+        """
         sender_factory = ESMTPSenderFactory(
             self._user,
             self._passwd,
@@ -118,11 +138,13 @@ class Sender(object):
     def _send(self, _, to, message):
         """Internal function used to actually send the email.
 
+        :param _: Callback return, ignored.
+        :param to: A list of recipients.
         :param message: The message as string.
         """
         d = defer.Deferred()
 
-        sender_factory = self.get_factory(to, StringIO(message), d)
+        sender_factory = self._get_factory(to, StringIO(message), d)
         args = [self._server, self._port, sender_factory]
 
         if self._ssl:
