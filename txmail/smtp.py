@@ -1,6 +1,14 @@
 import os
 import email
 
+from cStringIO import StringIO
+
+from OpenSSL.SSL import SSLv3_METHOD
+
+from twisted.internet import defer, reactor
+from twisted.mail.smtp import ESMTPSenderFactory
+from twisted.internet.ssl import ClientContextFactory
+
 
 class Sender(object):
     def __init__(self, server, user=None, passwd=None,
@@ -13,11 +21,17 @@ class Sender(object):
         self._port = port
         self._starttls = starttls
         self._ssl = ssl
+
         self._from_name = kwargs.get('from_name', None)
         self._from_email = kwargs.get('from_email', None)
+        self._noisy = kwargs.get('noisy', False)
+        self._retries = kwargs.get('retries', 5)
+        self._timeout = kwargs.get('timeout', None)
+
+        self._bcc = []
 
     def send(self, to, subject, body, attachments=None,
-             from_name=None, from_email=None, cc=None, bcc=None):
+             from_name=None, from_email=None, cc=None, bcc=None, headers=None):
         """
         :param to: The recipient email. If a list is passed, the message will
         be fired to all of them.
@@ -33,16 +47,25 @@ class Sender(object):
         here will receive a carbon copy of the email.
         :param bcc: A single email or a list. Used as blind carbon copy, emails
         passed here will receive a blind carbon copy of the email.
+        :param headers: An optional dictionary of custom headers.
         """
 
         to = [to] if type(to) in (str, unicode) else to
-        attachments = [] if attachments else attachments
-        from_name = from_name if from_name else self._from_name
-        from_email = from_email if from_email else self._from_email
+        attachments = [] if attachments is None else attachments
+        self._from_name = from_name if from_name else self._from_name
+        self._from_email = from_email if from_email else self._from_email
 
-        msg = email.MIMEMultipart.MIMEMultipart()
+        if attachments:
+            msg = email.MIMEMultipart.MIMEMultipart()
+            msg.attach(email.MIMEText.MIMEText(body))
+        else:
+            msg = email.MIMENonMultipart.MIMENonMultipart('text', 'plain')
+            msg.set_payload(body)
+
         msg['From'] = "{} <{}>".format(from_name, from_email)
-        msg['To'] = ', '.join(to)
+        self._to = ', '.join(to)
+        msg['To'] = self._to
+
         msg['Subject'] = subject
         msg['Date'] = email.Utils.formatdate(localtime=True)
 
@@ -52,9 +75,6 @@ class Sender(object):
 
         if bcc is not None:
             bcc = [bcc] if type(bcc) in (str, unicode) else bcc
-            msg['Bcc'] = ', '.join(bcc)
-
-        msg.attach(email.MIMEText.MIMEText(body))
 
         for f in attachments:
             part = email.MIMEBase.MIMEBase('application', 'octet-stream')
@@ -65,5 +85,55 @@ class Sender(object):
                 'attachment; filename="%s"' % os.path.basename(f)
             )
             msg.attach(part)
+
+        if headers:
+            for k, v in headers.iteritems():
+                msg.add_header(k, v)
+
+        d = self._send(None, to, msg.as_string())
+
+        for blindrcpt in bcc:
+            msg['To'] = blindrcpt
+            del msg['Cc']
+            d.addCallback(self._send, blindrcpt, msg.as_string())
+
+        return d
+
+    def get_factory(self, to, message, deferred):
+        sender_factory = ESMTPSenderFactory(
+            self._user,
+            self._passwd,
+            self._from_email,
+            to,
+            message,
+            deferred,
+            heloFallback=True,
+            requireAuthentication=False,
+            requireTransportSecurity=self._starttls
+        )
+        sender_factory.noisy = self._noisy
+
+        return sender_factory
+
+    def _send(self, _, to, message):
+        """Internal function used to actually send the email.
+
+        :param message: The message as string.
+        """
+        d = defer.Deferred()
+
+        sender_factory = self.get_factory(to, StringIO(message), d)
+        args = [self._server, self._port, sender_factory]
+
+        if self._ssl:
+            func = reactor.connectSSL
+
+            context_factory = ClientContextFactory()
+            context_factory.method = SSLv3_METHOD
+            args.append(context_factory)
         else:
-            msg.set_payload(body)
+            func = reactor.connectTCP
+
+        func(*args)
+
+        return d
