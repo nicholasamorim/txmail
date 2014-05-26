@@ -12,7 +12,7 @@ from txmail.smtp import Sender
 
 subject = 'An Example of Life and Love and Emails'
 body = 'Hey ya'
-from = 'txmail@txmail.com'
+from_email = 'txmail@txmail.com'
 name = 'Tx Mail'
 
 sender = Sender(
@@ -22,7 +22,7 @@ sender = Sender(
     port=587, 
     starttls=True, 
     from_name=name, 
-    from_email=from
+    from_email=from_email
 )
 
 d = sender.send(['recipient1@txmail.com', 'recipient2@txmail.com'], subject, body)
@@ -36,6 +36,7 @@ attachments = ('pulpnonfiction.txt', 'lifeaftergod.md')
 d = sender.send(
     ['recipient1@txmail.com', 'recipient2@txmail.com'], 
     subject, body, attachments=attachments)
+d.addCallback(_email_sent)
 ```
 
 For more, take a look at the docs.
