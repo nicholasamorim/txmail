@@ -1,24 +1,26 @@
-from twisted.application import service
 from twisted.internet import ssl
 from twisted.internet import protocol
-from twisted.mail.pop3 import POP3Client
+from twisted.mail import pop3client
 from twisted.application.internet import TCPClient, SSLClient
 
 
-class POP3Protocol(POP3Client):
+class POP3Protocol(pop3client.POP3Client):
     def connectionMade(self):
-        print 'made!'
+        d = self.login(self.factory._username, self.factory._passwd)
+        d.addCallback(self._login_done)
+
+    def _login_done(self, msg):
+        print msg
 
     def handle_WELCOME(self, line):
         print line
 
     def serverGreeting(self, msg):
-        print 'ever called'
-        POP3Client.serverGreeting(self, msg)
+        pop3client.POP3Client.serverGreeting(self, msg)
         self.login(self.factory._username, self.factory._passwd)
 
 
-class POP3Factory(protocol.ClientFactory):
+class POP3ClientFactory(protocol.ClientFactory):
     protocol = POP3Protocol
 
     def __init__(self, username, passwd):
@@ -31,18 +33,18 @@ class POP3Factory(protocol.ClientFactory):
 
 class _POP3Client(TCPClient):
     def __init__(self, host, username, passwd, port):
-        factory = POP3Factory(username, passwd)
+        factory = POP3ClientFactory(username, passwd)
         TCPClient.__init__(self, host, port, factory)
 
 
 class _POP3SSLClient(SSLClient):
     def __init__(self, host, username, passwd, port):
-        factory = POP3Factory(username, passwd)
+        self.factory = POP3ClientFactory(username, passwd)
         SSLClient.__init__(
-            self, host, port, factory, ssl.ClientContextFactory())
+            self, host, port, self.factory, ssl.ClientContextFactory())
 
 
-class POP3Service(service.Service):
+class POP3ServiceFactory(object):
     def __init__(self, host, username, passwd, port=None, ssl=False):
         if port is None and ssl is False:
             self.port = 110
@@ -54,9 +56,11 @@ class POP3Service(service.Service):
         self.passwd = passwd
         self.ssl = ssl
 
-    def startService(self):
-        service.Service.startService(self)
+    @property
+    def service(self):
         if self.ssl is False:
-            _POP3Client(self.host, self.username, self.passwd, self.port)
+            return _POP3Client(
+                self.host, self.username, self.passwd, self.port)
         else:
-            _POP3SSLClient(self.host, self.username, self.passwd, self.port)
+            return _POP3SSLClient(
+                self.host, self.username, self.passwd, self.port)
