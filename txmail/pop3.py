@@ -31,13 +31,13 @@ class POP3ClientFactory(protocol.ClientFactory):
         print reason
 
 
-class _POP3Client(TCPClient):
+class POP3Client(TCPClient):
     def __init__(self, host, username, passwd, port):
         factory = POP3ClientFactory(username, passwd)
         TCPClient.__init__(self, host, port, factory)
 
 
-class _POP3SSLClient(SSLClient):
+class POP3SSLClient(SSLClient):
     def __init__(self, host, username, passwd, port):
         self.factory = POP3ClientFactory(username, passwd)
         SSLClient.__init__(
@@ -45,6 +45,8 @@ class _POP3SSLClient(SSLClient):
 
 
 class POP3ServiceFactory(object):
+    """Convenience Factory.
+    """
     def __init__(self, host, username, passwd, port=None, ssl=False):
         if port is None and ssl is False:
             self.port = 110
@@ -59,8 +61,8 @@ class POP3ServiceFactory(object):
     @property
     def service(self):
         if self.ssl is False:
-            return _POP3Client(
+            return POP3Client(
                 self.host, self.username, self.passwd, self.port)
         else:
-            return _POP3SSLClient(
+            return POP3SSLClient(
                 self.host, self.username, self.passwd, self.port)
