@@ -5,64 +5,80 @@ from twisted.application.internet import TCPClient, SSLClient
 
 
 class POP3Protocol(pop3client.POP3Client):
-    def connectionMade(self):
-        d = self.login(self.factory._username, self.factory._passwd)
-        d.addCallback(self._login_done)
-
-    def _login_done(self, msg):
+    def _login_successful(self, msg):
         print msg
 
-    def handle_WELCOME(self, line):
-        print line
-
     def serverGreeting(self, msg):
+
         pop3client.POP3Client.serverGreeting(self, msg)
-        self.login(self.factory._username, self.factory._passwd)
+        d = self.login(self.factory._username, self.factory._passwd)
+        d.addCallback(self._login_successful)
 
 
 class POP3ClientFactory(protocol.ClientFactory):
     protocol = POP3Protocol
 
-    def __init__(self, username, passwd):
+    def __init__(self, username, passwd, callback=None, **kwargs):
         self._username = username
         self._passwd = passwd
+        self._callback = callback
+        self._debug = kwargs.get('debug', False)
 
     def clientConnectionFailed(self, connector, reason):
         print reason
 
 
 class POP3Client(TCPClient):
-    def __init__(self, host, username, passwd, port):
-        factory = POP3ClientFactory(username, passwd)
+    """POP3 non-encrypted client. Usually connects on port 110.
+    """
+    def __init__(self, host, port, factory):
         TCPClient.__init__(self, host, port, factory)
 
 
 class POP3SSLClient(SSLClient):
-    def __init__(self, host, username, passwd, port):
-        self.factory = POP3ClientFactory(username, passwd)
+    """POP3 SSL Client. Usually connects on port 995.
+    """
+    def __init__(self, host, port, factory):
         SSLClient.__init__(
-            self, host, port, self.factory, ssl.ClientContextFactory())
+            self, host, port, factory, ssl.ClientContextFactory())
 
 
 class POP3ServiceFactory(object):
-    """Convenience Factory.
+    """Convenience Service Factory. It returns the correct client/service
+    based on ssl parameter.
     """
-    def __init__(self, host, username, passwd, port=None, ssl=False):
+    def __init__(self, host, username, passwd, port=None,
+                 ssl=False, callback=None, **kwargs):
+        """
+        :param host: The POP3 host.
+        :param username: The POP3 server username.
+        :param passwd: The POP3 user's password.
+        :param port: An optional port.
+        :param ssl: A boolean. Default is False.
+        :param callback: A function to be called everytime a message
+        arrives.
+        :param save: (kwargs) An optional path to save messages.
+        """
         if port is None and ssl is False:
             self.port = 110
         elif port is None and ssl is True:
             self.port = 995
 
         self.host = host
-        self.username = username
-        self.passwd = passwd
         self.ssl = ssl
+        self.factory = POP3ClientFactory(username, passwd, callback, **kwargs)
 
     @property
     def service(self):
+        """A property factory that returns the right service.
+        When using as a service you might do:
+
+        pop3 = POP3ServiceFactory(host, user, passwd, ssl=ssl)
+        application.addService(pop3.service)
+        """
         if self.ssl is False:
             return POP3Client(
-                self.host, self.username, self.passwd, self.port)
+                self.host, self.port, self.factory)
         else:
             return POP3SSLClient(
-                self.host, self.username, self.passwd, self.port)
+                self.host, self.port, self.factory)
