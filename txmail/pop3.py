@@ -9,10 +9,17 @@ class POP3Protocol(pop3client.POP3Client):
         print msg
 
     def serverGreeting(self, msg):
-
         pop3client.POP3Client.serverGreeting(self, msg)
         d = self.login(self.factory._username, self.factory._passwd)
         d.addCallback(self._login_successful)
+
+    def _save_on_folder(self, message):
+        if self.factory._save_on:
+            pass
+
+    def _message_received(self, message):
+        if self.factory._callback is not None:
+            self.factory._callback(message)
 
 
 class POP3ClientFactory(protocol.ClientFactory):
@@ -23,6 +30,8 @@ class POP3ClientFactory(protocol.ClientFactory):
         self._passwd = passwd
         self._callback = callback
         self._debug = kwargs.get('debug', False)
+        self._save_on = kwargs.get('save_on', False)
+        self._delete_on_remote = kwargs.get('delete_on_remote', False)
 
     def clientConnectionFailed(self, connector, reason):
         print reason
@@ -55,9 +64,10 @@ class POP3ServiceFactory(object):
         :param passwd: The POP3 user's password.
         :param port: An optional port.
         :param ssl: A boolean. Default is False.
-        :param callback: A function to be called everytime a message
-        arrives.
-        :param save: (kwargs) An optional path to save messages.
+        :param callback: A function to be called everytime a message arrives.
+        :param save_on: (kwargs) An optional path to save messages.
+        :param delete_on_remote: (kwargs) An optional boolean to delete
+        messages on remote after receiving them. Default is False.
         """
         if port is None and ssl is False:
             self.port = 110
