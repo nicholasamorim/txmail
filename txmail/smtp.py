@@ -46,8 +46,6 @@ class Sender(object):
         self._retries = kwargs.get('retries', 5)
         self._timeout = kwargs.get('timeout', None)
 
-        self._bcc = []
-
     def send(self, to, subject, body, attachments=None,
              from_name=None, from_email=None, cc=None, bcc=None, headers=None):
         """
@@ -93,6 +91,8 @@ class Sender(object):
 
         if bcc is not None:
             bcc = [bcc] if type(bcc) in (str, unicode) else bcc
+        else:
+            bcc = []
 
         for f in attachments:
             part = email.MIMEBase.MIMEBase('application', 'octet-stream')
