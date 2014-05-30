@@ -78,7 +78,7 @@ class Sender(object):
             msg = email.MIMENonMultipart.MIMENonMultipart('text', 'plain')
             msg.set_payload(body)
 
-        msg['From'] = "{} <{}>".format(from_name, from_email)
+        msg['From'] = "{} <{}>".format(self._from_name, self._from_email)
         self._to = ', '.join(to)
         msg['To'] = self._to
 
