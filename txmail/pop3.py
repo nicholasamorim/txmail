@@ -1,25 +1,75 @@
-from twisted.internet import ssl
+import re
+import email
+
+from twisted.python import log
+from twisted.internet import ssl, defer
 from twisted.internet import protocol
 from twisted.mail import pop3client
 from twisted.application.internet import TCPClient, SSLClient
 
+EMAIL_RE = re.compile(r'[\w\.-]+@[\w\.-]+')
+
 
 class POP3Protocol(pop3client.POP3Client):
     def _login_successful(self, msg):
-        print msg
+        if self.factory._debug:
+            log.msg('Login was successful!')
+
+        self.listSize().addCallback(self._got_sizes)
+
+    def _got_sizes(self, sizes):
+        retrievers = []
+        for i in range(len(sizes)):
+            d = self.retrieve(i)
+            d.addCallback(self._parse_message)
+            d.addCallback(self._process_message)
+
+            retrievers.append(d)
+
+        dlist = defer.DeferredList(retrievers)
+        dlist.addCallback(self._finished)
+
+        return dlist
+
+    def _parse_message(self, lines):
+        """
+        """
+        parsed_email = email.message_from_string('\n'.join(lines))
+        return parsed_email
+
+    def _finished(self, results):
+        if self.factory._debug:
+            log.msg('_finished: %s' % (results, ))
+
+        self.quit()
 
     def serverGreeting(self, msg):
         pop3client.POP3Client.serverGreeting(self, msg)
-        d = self.login(self.factory._username, self.factory._passwd)
+        d = self.login(
+            self.factory._username,
+            self.factory._passwd)
+
         d.addCallback(self._login_successful)
+        d.addErrback(log.err)
 
     def _save_on_folder(self, message):
         if self.factory._save_on:
             pass
 
-    def _message_received(self, message):
+        return message
+
+    def _call_callback(self, message):
+        """
+        """
         if self.factory._callback is not None:
-            self.factory._callback(message)
+            pass
+
+    def _process_message(self, message):
+        """
+        """
+        d = self._save_on_folder(message)
+        d.addCallback(self._call_callback)
+        return d
 
 
 class POP3ClientFactory(protocol.ClientFactory):
